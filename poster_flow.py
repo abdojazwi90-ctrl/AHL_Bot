@@ -374,8 +374,18 @@ async def _quick_generate(message: Message, state: FSMContext, product_name: str
         if not fonts_are_ready():
             caption += "\n\n⚠️ تنبيه: الخطوط غير مضبوطة بالكامل. أرسل /fonts_status للتفاصيل."
         await status.delete()
-        await message.answer_photo(photo=FSInputFile(output_path), caption=caption)
-        os.remove(output_path)
+        try:
+            await message.answer_photo(photo=FSInputFile(output_path), caption=caption)
+        except Exception as e:
+            logger.exception("فشل إرسال صورة البوستر النهائية (الوضع السريع)")
+            reason = str(e).strip().splitlines()[0][:180] if str(e).strip() else ""
+            await message.answer(
+                "❌ تم تصميم البوستر بنجاح لكن فشل إرسال الصورة عبر تيليجرام. جرّب هذه الصورة مرة أخرى."
+                + (f"\n\n🔧 السبب الفني: {reason}" if reason else "")
+            )
+        finally:
+            if os.path.exists(output_path):
+                os.remove(output_path)
     else:
         await status.edit_text("❌ حدث خطأ أثناء التصميم. جرّب هذه الصورة مرة أخرى.")
 
@@ -717,13 +727,30 @@ async def got_size(callback: CallbackQuery, state: FSMContext):
                 "قد تظهر بعض الحروف العربية ناقصة في الصورة أعلاه. أرسل الأمر "
                 "/fonts_status لمعرفة السبب بالتحديد وحله."
             )
-        await callback.message.answer_photo(photo=FSInputFile(output_path), caption=caption)
-        os.remove(output_path)
-        await callback.message.answer(
-            "📐 يمكنك الآن توليد **نفس المنتج بمقاس آخر مباشرة** بدون إعادة كتابة أي بيانات، "
-            "أو إنهاء والبدء بمنتج جديد:",
-            reply_markup=_multi_size_keyboard(),
-        )
+        # إرسال الصورة الفعلي لتيليجرام قد يفشل لأسباب مستقلة تماماً عن نجاح
+        # توليد البوستر نفسه (انقطاع شبكة مؤقت، رفض تيليجرام للملف، انتهاء
+        # مهلة الاتصال...). بدون هذا try/except كان أي فشل هنا يمر بصمت
+        # تام: يصل المستخدم لرسالة "جاري الرسم" ثم لا يصله أي شيء بعدها -
+        # لا الصورة ولا حتى رسالة خطأ توضح له ما حدث.
+        try:
+            await callback.message.answer_photo(photo=FSInputFile(output_path), caption=caption)
+            await callback.message.answer(
+                "📐 يمكنك الآن توليد **نفس المنتج بمقاس آخر مباشرة** بدون إعادة كتابة أي بيانات، "
+                "أو إنهاء والبدء بمنتج جديد:",
+                reply_markup=_multi_size_keyboard(),
+            )
+        except Exception as e:
+            logger.exception("فشل إرسال صورة البوستر النهائية لتيليجرام")
+            reason = str(e).strip().splitlines()[0][:180] if str(e).strip() else ""
+            await callback.message.answer(
+                "❌ تم تصميم البوستر بنجاح لكن فشل إرسال الصورة عبر تيليجرام. "
+                "جرّب الضغط على نفس زر المقاس مرة أخرى:"
+                + (f"\n\n🔧 السبب الفني: {reason}" if reason else ""),
+                reply_markup=_multi_size_keyboard(),
+            )
+        finally:
+            if os.path.exists(output_path):
+                os.remove(output_path)
     else:
         await callback.message.answer(
             "❌ حدث خطأ فني أثناء تصدير الصورة. جرّب مقاساً آخر أو ابدأ من جديد:",

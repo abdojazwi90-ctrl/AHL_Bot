@@ -461,7 +461,20 @@ def generate_poster(
         base.paste(p_img, (px, py), p_img)
 
     # 6. تحميل الخطوط
-    font_title = _load_font(int(w * 0.046), bold=True)
+    # اسم المنتج: حجم أساسي متناسق (مو ضخم بشكل مبالغ فيه) + تصغير تلقائي
+    # تدريجي لو كان الاسم طويلاً، حتى يبقى متناسباً دائماً مع بقية عناصر
+    # البوستر (السعر، المواصفات) بدل حجم ثابت ضخم يطغى على التصميم.
+    max_title_w = w * 0.5  # المساحة اليمنى المتاحة قبل الوصول لبطاقة السعر
+    title_size = int(w * 0.036)
+    min_title_size = int(w * 0.02)
+    font_title = _load_font(title_size, bold=True)
+    if product_name and product_name.strip():
+        title_measure = measure_rtl_text(draw, product_name.strip(), font_title)
+        while title_measure > max_title_w and title_size > min_title_size:
+            title_size -= 1
+            font_title = _load_font(title_size, bold=True)
+            title_measure = measure_rtl_text(draw, product_name.strip(), font_title)
+
     font_promo = _load_font(int(w * 0.024), bold=False)
     font_price = _load_font(int(w * 0.032), bold=True)
 
